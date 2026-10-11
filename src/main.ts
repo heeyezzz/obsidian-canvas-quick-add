@@ -11,7 +11,7 @@ import {
 type CanvasPos = { x: number; y: number };
 type CanvasSize = { width: number; height: number };
 type CanvasBox = { minX: number; minY: number; maxX: number; maxY: number };
-type CanvasNodeRect = { x: number; y: number; width: number; height: number };
+type CanvasNodeRef = { x: number; y: number; width: number; height: number };
 
 /**
  * Obsidian 没有公开 Canvas 运行时 API，下面的成员是从 1.14.4 渲染包里读出来的。
@@ -19,8 +19,9 @@ type CanvasNodeRect = { x: number; y: number; width: number; height: number };
  */
 type CanvasInternal = {
   posCenter(): CanvasPos;
-  getViewportBBox(): CanvasBox;
-  getData(): { nodes: CanvasNodeRect[] };
+  /** 范围比视口小就纯平移，只有比视口大才退化成 zoomToBbox */
+  panIntoView(bbox: CanvasBox, padding?: number): void;
+  getData(): { nodes: CanvasNodeRef[] };
   config: { defaultTextNodeDimensions: CanvasSize };
   createTextNode(options: {
     pos: CanvasPos;
@@ -29,7 +30,7 @@ type CanvasInternal = {
     text?: string;
     save?: boolean;
     focus?: boolean;
-  }): unknown;
+  }): CanvasNodeRef;
 };
 
 type CanvasViewLike = {
@@ -61,6 +62,8 @@ export default class CanvasQuickAddPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('layout-change', refresh));
     this.registerEvent(this.app.workspace.on('active-leaf-change', refresh));
     this.registerEvent(this.app.workspace.on('file-open', refresh));
+    // 键盘弹出和收起会改 window 尺寸，按钮该不该抬升取决于那一刻工具条在哪
+    this.registerDomEvent(window, 'resize', refresh);
 
     this.addSettingTab(new QuickAddSettingTab(this.app, this));
   }
@@ -102,9 +105,56 @@ export default class CanvasQuickAddPlugin extends Plugin {
   syncAll() {
     const show = this.shouldShow();
     for (const view of this.canvasViews()) {
-      if (show) this.addButton(view);
-      else this.removeButton(view);
+      if (show) {
+        this.addButton(view);
+        this.reposition(view);
+      } else {
+        this.removeButton(view);
+      }
     }
+  }
+
+  /**
+   * 键盘弹起后白板容器被压缩，按钮会落到右侧控件栏那一列的下端。
+   * 两类 chrome 形状不同，绕法也不同：
+   * .canvas-menu（选中卡片的工具条）又宽又矮，从上方绕；
+   * .canvas-controls（缩放/撤销那排，Advanced Canvas 还会往里加项）又窄又高，从左侧绕。
+   */
+  private reposition(view: CanvasViewLike) {
+    const anchor = this.anchor(view);
+    const el = anchor?.querySelector(`.${BUTTON_CLASS}`) as HTMLElement | null;
+    if (!anchor || !el) return;
+
+    el.style.removeProperty('bottom');
+    el.style.removeProperty('right');
+
+    const er = el.getBoundingClientRect();
+    const lift = this.overlapAmount(view, '.canvas-menu', er, 'v');
+    const slide = this.overlapAmount(view, '.canvas-controls', er, 'h');
+    if (!lift && !slide) return;
+
+    const cs = getComputedStyle(el);
+    if (lift) el.style.bottom = `${parseFloat(cs.bottom) + lift}px`;
+    if (slide) el.style.right = `${parseFloat(cs.right) + slide}px`;
+  }
+
+  /** 返回把按钮从该 chrome 上躲开所需的位移量（像素），不重叠则 0 */
+  private overlapAmount(
+    view: CanvasViewLike,
+    selector: string,
+    er: DOMRect,
+    axis: 'v' | 'h'
+  ): number {
+    const node = view.containerEl.querySelector(selector) as HTMLElement | null;
+    if (!node) return 0;
+
+    const r = node.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return 0;
+    if (er.right <= r.left || er.left >= r.right || er.bottom <= r.top || er.top >= r.bottom) {
+      return 0;
+    }
+
+    return axis === 'v' ? er.bottom - r.top + 8 : er.right - r.left + 8;
   }
 
   /** 挂到 Obsidian 那组缩放控件的父节点上，和官方 chrome 共用同一个定位上下文 */
@@ -145,7 +195,20 @@ export default class CanvasQuickAddPlugin extends Plugin {
       new Notice('拿不到 Canvas 内部接口，Obsidian 升级后需要重新适配。');
       return;
     }
-    canvas.createTextNode({ pos: this.nextFreePos(canvas), position: 'center' });
+    const node = canvas.createTextNode({ pos: this.nextFreePos(canvas), position: 'center' });
+
+    // 卡片可能落在视口下方，用 Obsidian 自己的平移逻辑滚进来
+    if (node && typeof canvas.panIntoView === 'function') {
+      canvas.panIntoView({
+        minX: node.x,
+        maxX: node.x + node.width,
+        minY: node.y,
+        maxY: node.y + node.height,
+      });
+    }
+
+    // 新卡片会带出浮动工具条，位置是异步算的，重排几次才稳
+    this.refresh();
   }
 
   /**
@@ -154,40 +217,28 @@ export default class CanvasQuickAddPlugin extends Plugin {
    */
   private nextFreePos(canvas: CanvasInternal): CanvasPos {
     const center = canvas.posCenter();
-    if (
-      typeof canvas.getViewportBBox !== 'function' ||
-      typeof canvas.getData !== 'function' ||
-      !canvas.config?.defaultTextNodeDimensions
-    ) {
+    if (!canvas.config?.defaultTextNodeDimensions || typeof canvas.getData !== 'function') {
       return center;
     }
 
-    const box = canvas.getViewportBBox();
     const { width, height } = canvas.config.defaultTextNodeDimensions;
-    const bottom = box.maxY - height / 2 - GAP;
-    const top = box.minY + height / 2 + GAP;
     const taken = canvas.getData().nodes.map((n) => ({
       x: n.x + n.width / 2,
       y: n.y + n.height / 2,
       w: n.width,
       h: n.height,
     }));
-    const isFree = (p: CanvasPos) =>
-      !taken.some(
+
+    for (let i = 0; i < 60; i++) {
+      const p = { x: center.x, y: center.y + i * (height + GAP) };
+      const blocked = taken.some(
         (t) =>
           Math.abs(t.x - p.x) < (t.w + width) / 2 + GAP &&
           Math.abs(t.y - p.y) < (t.h + height) / 2 + GAP
       );
-
-    for (const col of [0, 1, -1, 2, -2]) {
-      const x = center.x + col * (width + GAP);
-      if (x < box.minX + width / 2 + GAP || x > box.maxX - width / 2 - GAP) continue;
-      for (let y = col === 0 ? Math.max(center.y, top) : top; y <= bottom; y += height + GAP) {
-        if (isFree({ x, y })) return { x, y };
-      }
+      if (!blocked) return p;
     }
 
-    // 视口里实在挤不下了，退回中心，至少新卡片在屏幕上
     return center;
   }
 
