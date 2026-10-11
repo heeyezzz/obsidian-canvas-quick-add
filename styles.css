@@ -1,0 +1,43 @@
+/* 复用 Obsidian 自己的 canvas-control-group 底色、描边和阴影，
+   主题改配色时按钮跟着变，不重复定义一层皮肤。 */
+
+.cqa-add-card {
+  position: absolute;
+  z-index: var(--layer-cover);
+  right: calc(var(--size-4-3) + var(--safe-area-inset-right, 0px));
+  bottom: var(--size-4-4);
+  border-radius: var(--radius-m);
+}
+
+/* 手机端底部有 Obsidian 自己的工具条，键盘弹出时它还会往上顶，
+   所以这里用和 .mobile-toolbar 相同的算式把按钮抬到它上方。 */
+.is-mobile .cqa-add-card {
+  bottom: calc(var(--mobile-toolbar-height, 0px) + var(--keyboard-height, 0px) + var(--size-4-3));
+}
+
+.cqa-add-card .canvas-control-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--size-4-3);
+  border-radius: var(--radius-m);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 触屏没有 hover，按下时得有反馈 */
+.cqa-add-card .canvas-control-item:active {
+  background-color: var(--interactive-hover);
+  color: var(--text-normal);
+}
+
+/* 编辑卡片时 Obsidian 会用自己的规则藏掉卡片菜单，这里跟着一起藏，
+   否则键盘弹起后按钮会被顶到画面上缘和缩放控件挤在一起 */
+.mod-toolbar-open .cqa-add-card {
+  display: none;
+}
