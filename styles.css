@@ -1,20 +1,14 @@
 /* 复用 Obsidian 自己的 canvas-control-group 底色、描边和阴影，
    主题改配色时按钮跟着变，不重复定义一层皮肤。 */
 
+/* 放在左上角：右下角会被移动端底部工具条压住，右上角是 Obsidian 的缩放控件栏，
+   只有左上角在桌面端和手机端都是空的。 */
 .cqa-add-card {
   position: absolute;
   z-index: var(--layer-cover);
-  right: calc(var(--size-4-3) + var(--safe-area-inset-right, 0px));
-  bottom: var(--size-4-4);
+  top: var(--size-4-4);
+  left: calc(var(--size-4-3) + var(--safe-area-inset-left, 0px));
   border-radius: var(--radius-m);
-}
-
-/* 手机端底部有 Obsidian 自己的工具条，它会压在白板容器下沿，所以抬一个工具条高度。
-   不能再加 --keyboard-height：键盘弹起时 Obsidian 用
-   body.is-mobile .app-container { max-height: calc(100vh - var(--keyboard-height)) }
-   缩短容器，按钮所在的定位上下文已经跟着上移了，再加一次会顶到屏幕外。 */
-.is-mobile .cqa-add-card {
-  bottom: calc(var(--mobile-toolbar-height, 0px) + var(--size-4-3));
 }
 
 .cqa-add-card .canvas-control-item {
