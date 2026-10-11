@@ -1,7 +1,7 @@
 {
   "id": "canvas-quick-add",
   "name": "Canvas Quick Add",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minAppVersion": "1.14.0",
   "description": "Restores a quick way to add cards to Canvas on phones, where Obsidian hides the card menu.",
   "author": "heeyezzz",

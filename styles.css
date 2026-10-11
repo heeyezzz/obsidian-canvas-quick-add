@@ -9,10 +9,12 @@
   border-radius: var(--radius-m);
 }
 
-/* 手机端底部有 Obsidian 自己的工具条，键盘弹出时它还会往上顶，
-   所以这里用和 .mobile-toolbar 相同的算式把按钮抬到它上方。 */
+/* 手机端底部有 Obsidian 自己的工具条，它会压在白板容器下沿，所以抬一个工具条高度。
+   不能再加 --keyboard-height：键盘弹起时 Obsidian 用
+   body.is-mobile .app-container { max-height: calc(100vh - var(--keyboard-height)) }
+   缩短容器，按钮所在的定位上下文已经跟着上移了，再加一次会顶到屏幕外。 */
 .is-mobile .cqa-add-card {
-  bottom: calc(var(--mobile-toolbar-height, 0px) + var(--keyboard-height, 0px) + var(--size-4-3));
+  bottom: calc(var(--mobile-toolbar-height, 0px) + var(--size-4-3));
 }
 
 .cqa-add-card .canvas-control-item {
@@ -34,10 +36,4 @@
 .cqa-add-card .canvas-control-item:active {
   background-color: var(--interactive-hover);
   color: var(--text-normal);
-}
-
-/* 编辑卡片时 Obsidian 会用自己的规则藏掉卡片菜单，这里跟着一起藏，
-   否则键盘弹起后按钮会被顶到画面上缘和缩放控件挤在一起 */
-.mod-toolbar-open .cqa-add-card {
-  display: none;
 }

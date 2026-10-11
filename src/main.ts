@@ -10,13 +10,18 @@ import {
 
 type CanvasPos = { x: number; y: number };
 type CanvasSize = { width: number; height: number };
+type CanvasBox = { minX: number; minY: number; maxX: number; maxY: number };
+type CanvasNodeRect = { x: number; y: number; width: number; height: number };
 
 /**
- * Obsidian 没有公开 Canvas 运行时 API，下面两个成员是从 1.14.4 渲染包里读出来的。
+ * Obsidian 没有公开 Canvas 运行时 API，下面的成员是从 1.14.4 渲染包里读出来的。
  * 只调用、不替换，所以 Advanced Canvas 这类插件打在上面的补丁照常生效。
  */
 type CanvasInternal = {
   posCenter(): CanvasPos;
+  getViewportBBox(): CanvasBox;
+  getData(): { nodes: CanvasNodeRect[] };
+  config: { defaultTextNodeDimensions: CanvasSize };
   createTextNode(options: {
     pos: CanvasPos;
     position?: 'center' | 'top-left';
@@ -36,6 +41,8 @@ type QuickAddSettings = { showOnDesktop: boolean };
 
 const DEFAULT_SETTINGS: QuickAddSettings = { showOnDesktop: false };
 const BUTTON_CLASS = 'cqa-add-card';
+// 新卡片之间的间距，和 Obsidian 批量建文件卡用的偏移量一致
+const GAP = 45;
 
 export default class CanvasQuickAddPlugin extends Plugin {
   settings: QuickAddSettings = { ...DEFAULT_SETTINGS };
@@ -138,7 +145,50 @@ export default class CanvasQuickAddPlugin extends Plugin {
       new Notice('拿不到 Canvas 内部接口，Obsidian 升级后需要重新适配。');
       return;
     }
-    canvas.createTextNode({ pos: canvas.posCenter(), position: 'center' });
+    canvas.createTextNode({ pos: this.nextFreePos(canvas), position: 'center' });
+  }
+
+  /**
+   * 从视口中心往下找第一个空位，一列排满就往左右换列。
+   * 位置只限制在可视范围内，因为 startEditing 不会把屏幕外的卡片滚进来。
+   */
+  private nextFreePos(canvas: CanvasInternal): CanvasPos {
+    const center = canvas.posCenter();
+    if (
+      typeof canvas.getViewportBBox !== 'function' ||
+      typeof canvas.getData !== 'function' ||
+      !canvas.config?.defaultTextNodeDimensions
+    ) {
+      return center;
+    }
+
+    const box = canvas.getViewportBBox();
+    const { width, height } = canvas.config.defaultTextNodeDimensions;
+    const bottom = box.maxY - height / 2 - GAP;
+    const top = box.minY + height / 2 + GAP;
+    const taken = canvas.getData().nodes.map((n) => ({
+      x: n.x + n.width / 2,
+      y: n.y + n.height / 2,
+      w: n.width,
+      h: n.height,
+    }));
+    const isFree = (p: CanvasPos) =>
+      !taken.some(
+        (t) =>
+          Math.abs(t.x - p.x) < (t.w + width) / 2 + GAP &&
+          Math.abs(t.y - p.y) < (t.h + height) / 2 + GAP
+      );
+
+    for (const col of [0, 1, -1, 2, -2]) {
+      const x = center.x + col * (width + GAP);
+      if (x < box.minX + width / 2 + GAP || x > box.maxX - width / 2 - GAP) continue;
+      for (let y = col === 0 ? Math.max(center.y, top) : top; y <= bottom; y += height + GAP) {
+        if (isFree({ x, y })) return { x, y };
+      }
+    }
+
+    // 视口里实在挤不下了，退回中心，至少新卡片在屏幕上
+    return center;
   }
 
   async loadSettings() {
