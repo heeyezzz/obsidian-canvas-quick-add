@@ -16,10 +16,9 @@ Obsidian 桌面端白板底部中间有卡片菜单（便利贴、笔记、链�
 
 ### 方式一：BRAT（推荐）
 
-1. 在 Obsidian 社区插件里搜索并安装 **Better Robust Alternative to Test plugins**（简称 BRAT）。
-2. 打开 BRAT 设置，点 **Add plugin**。
-3. 仓库地址填 `heeyezzz/obsidian-canvas-quick-add`，确认。
-4. BRAT 会拉取本仓库最新的 Release 并装上，之后在第三方插件列表里打开开关。
+1. 在 Obsidian 社区插件里搜索 **BRAT**（作者 tfthacker，插件 ID 是 `obsidian42-brat`）并安装启用。
+2. 打开 BRAT 的设置，添加插件仓库，地址填 `https://github.com/heeyezzz/obsidian-canvas-quick-add`。
+3. BRAT 会拉取本仓库最新的 Release 并装上，之后在第三方插件列表里打开开关。
 
 以后更新只需在 BRAT 里点这个插件的 Check for update。
 
