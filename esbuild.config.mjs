@@ -2,12 +2,11 @@ import esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 构建产物默认落在 ./dist。想让构建直接写进某个 vault，用 CANVAS_VAULT 指到 vault 根目录：
-//   CANVAS_VAULT=/path/to/vault npm run build
+// 产物始终落在 ./dist，发版只认这一份。
+// 设了 CANVAS_VAULT 再额外复制一份进那个库，避免"直接构建进库"导致 dist 静默变旧。
 const vault = process.env.CANVAS_VAULT;
-const outdir = vault
-  ? path.join(vault, '.obsidian', 'plugins', 'canvas-quick-add')
-  : 'dist';
+const outdir = 'dist';
+const vaultDir = vault ? path.join(vault, '.obsidian', 'plugins', 'canvas-quick-add') : null;
 const prod = process.argv[2] === 'production';
 
 const options = {
@@ -37,19 +36,42 @@ const options = {
   minify: prod,
 };
 
-function copySupportFiles() {
+const ROOT_ASSETS = ['manifest.json', 'versions.json', 'styles.css'];
+
+/** 把根目录的配置和构建出的 main.js 组装成一份完整的 dist */
+function stage() {
   fs.mkdirSync(outdir, { recursive: true });
-  for (const file of ['manifest.json', 'versions.json', 'styles.css']) {
-    fs.copyFileSync(file, path.join(outdir, file));
+  for (const file of ROOT_ASSETS) fs.copyFileSync(file, path.join(outdir, file));
+}
+
+/** dist 整体复制进某个库 */
+function deployTo(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  for (const file of [...ROOT_ASSETS, 'main.js']) {
+    fs.copyFileSync(path.join(outdir, file), path.join(dir, file));
   }
 }
 
-copySupportFiles();
+function publish() {
+  stage();
+  if (vaultDir) deployTo(vaultDir);
+}
 
 if (prod) {
   await esbuild.build(options);
+  publish();
 } else {
   const ctx = await esbuild.context(options);
+  ctx.onBuild({
+    result() {
+      try {
+        publish();
+      } catch (error) {
+        console.error('copy failed', error);
+      }
+    },
+  });
   await ctx.watch();
-  console.log(`watching → ${outdir}`);
+  publish();
+  console.log(`watching → ${outdir}${vaultDir ? ` + ${vaultDir}` : ''}`);
 }
